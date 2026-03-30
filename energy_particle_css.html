@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 393px;
+    height: 852px;
+    background: transparent;
+    overflow: hidden;
+  }
+
+  #trigger {
+    position: absolute;
+    left: 24px; bottom: 148px;
+    width: 345px; height: 56px;
+    cursor: pointer; z-index: 10;
+  }
+
+  /* ── Particle base ──
+     Start position = donate button centre (196, 725)
+     offset-path curves up-left to progress thumb (58, 388)
+     Path is relative to the element's top-left corner
+  ── */
+  .particle {
+    position: absolute;
+    left: 196px; top: 725px;
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    background: rgb(3, 112, 103);
+    border: 3px solid rgba(255,255,255,0.92);
+    display: flex; align-items: center; justify-content: center;
+    transform: translate(-50%, -50%);
+    opacity: 0;
+    will-change: offset-distance, opacity, scale, box-shadow;
+    offset-rotate: 0deg;
+  }
+
+  /* Leaf icon */
+  .particle::after {
+    content: '';
+    display: block;
+    width: 11px; height: 12px;
+    background: rgba(255,255,255,0.95);
+    clip-path: polygon(50% 0%, 100% 35%, 85% 100%, 15% 100%, 0% 35%);
+    border-radius: 50% 50% 40% 40% / 55% 55% 45% 45%;
+  }
+
+  /* ── Each particle gets its own path ──
+     Cubic bezier: from (0,0) relative, arcing to thumb offset
+     Thumb at (58,388), button at (196,725) → delta = (-138, -337)
+  ── */
+  .p1 {
+    offset-path: path('M 0 0 C -95 -75, -130 -240, -138 -337');
+  }
+  .p2 {
+    width: 22px; height: 22px; border-width: 2.5px;
+    offset-path: path('M 0 0 C -75 -55, -148 -255, -138 -337');
+  }
+  .p2::after { width: 9px; height: 10px; }
+
+  .p3 {
+    width: 19px; height: 19px; border-width: 2px;
+    offset-path: path('M 0 0 C -55 -40, -158 -265, -138 -337');
+  }
+  .p3::after { width: 8px; height: 9px; }
+
+  /* ── Fire state ── */
+  .p1.fire {
+    animation:
+      travel  0.92s cubic-bezier(0.42,0,0.18,1.0)  0ms    1 forwards,
+      appear  0.10s linear                           0ms    1 forwards,
+      vanish  0.16s linear                           760ms  1 forwards,
+      swell   0.92s ease                             0ms    1 forwards,
+      shine   0.92s ease                             0ms    1 forwards;
+  }
+  .p2.fire {
+    animation:
+      travel  0.96s cubic-bezier(0.42,0,0.18,1.0)  130ms  1 forwards,
+      appear  0.10s linear                           130ms  1 forwards,
+      vanish  0.16s linear                           906ms  1 forwards,
+      swell   0.96s ease                             130ms  1 forwards,
+      shine   0.96s ease                             130ms  1 forwards;
+  }
+  .p3.fire {
+    animation:
+      travel  0.90s cubic-bezier(0.42,0,0.18,1.0)  240ms  1 forwards,
+      appear  0.10s linear                           240ms  1 forwards,
+      vanish  0.16s linear                           1014ms 1 forwards,
+      swell   0.90s ease                             240ms  1 forwards,
+      shine   0.90s ease                             240ms  1 forwards;
+  }
+
+  @keyframes travel  { from { offset-distance: 0%; } to { offset-distance: 100%; } }
+  @keyframes appear  { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes vanish  { from { opacity: 1; } to { opacity: 0; } }
+  @keyframes swell   {
+    0%   { scale: 0.75; }
+    40%  { scale: 1.30; }
+    75%  { scale: 1.10; }
+    100% { scale: 1.00; }
+  }
+  @keyframes shine {
+    0%   { box-shadow: 0 0  0px  0px rgba(93,235,176,0.00); }
+    55%  { box-shadow: 0 0 14px  5px rgba(93,235,176,0.50); }
+    100% { box-shadow: 0 0 26px 10px rgba(93,235,176,0.70); }
+  }
+
+  /* ── Trail dots ──
+     Hand-placed along the bezier arc at ~20% intervals
+  ── */
+  .trail {
+    position: absolute;
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: #5DCAA5;
+    opacity: 0;
+    pointer-events: none;
+    will-change: opacity, scale;
+  }
+  /* Approximate bezier sample points */
+  .t1 { left: 175px; top: 668px; }
+  .t2 { left: 150px; top: 610px; }
+  .t3 { left: 122px; top: 546px; }
+  .t4 { left: 98px;  top: 480px; }
+  .t5 { left: 76px;  top: 428px; }
+
+  .t1.fire { animation: trailPop 0.75s ease  80ms  1 forwards; }
+  .t2.fire { animation: trailPop 0.75s ease 200ms  1 forwards; }
+  .t3.fire { animation: trailPop 0.75s ease 320ms  1 forwards; }
+  .t4.fire { animation: trailPop 0.75s ease 440ms  1 forwards; }
+  .t5.fire { animation: trailPop 0.75s ease 560ms  1 forwards; }
+
+  @keyframes trailPop {
+    0%   { opacity: 0; scale: 0.4; }
+    18%  { opacity: 0.55; scale: 1; }
+    100% { opacity: 0; scale: 0.3; }
+  }
+
+  /* ── Burst rings at progress thumb (58, 388) ── */
+  .burst {
+    position: absolute;
+    left: 58px; top: 388px;
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    border: 2px solid rgba(93,202,165,0.85);
+    transform: translate(-50%,-50%) scale(0.4);
+    opacity: 0;
+    pointer-events: none;
+    will-change: transform, opacity;
+  }
+  .burst.fire  { animation: ring 0.44s ease-out  880ms 1 forwards; }
+  .burst2.fire { animation: ring 0.44s ease-out 1010ms 1 forwards; }
+  .burst3.fire { animation: ring 0.44s ease-out 1130ms 1 forwards; }
+
+  @keyframes ring {
+    0%   { transform: translate(-50%,-50%) scale(0.5); opacity: 0.9; }
+    100% { transform: translate(-50%,-50%) scale(3.8); opacity: 0; }
+  }
+</style>
+</head>
+<body>
+
+<div id="trigger" onclick="fire()"></div>
+
+<div class="particle p1" id="p1"></div>
+<div class="particle p2" id="p2"></div>
+<div class="particle p3" id="p3"></div>
+
+<div class="burst"  id="b1"></div>
+<div class="burst burst2" id="b2"></div>
+<div class="burst burst3" id="b3"></div>
+
+<div class="trail t1" id="t1"></div>
+<div class="trail t2" id="t2"></div>
+<div class="trail t3" id="t3"></div>
+<div class="trail t4" id="t4"></div>
+<div class="trail t5" id="t5"></div>
+
+<script>
+let animating = false;
+const ids = ['p1','p2','p3','b1','b2','b3','t1','t2','t3','t4','t5'];
+
+function fire() {
+  if (animating) return;
+  animating = true;
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    el.classList.remove('fire');
+    void el.offsetWidth; // force reflow to restart animation
+  });
+  ids.forEach(id => document.getElementById(id).classList.add('fire'));
+  // longest: p3 (240ms delay + 900ms travel + 450ms burst) ≈ 1590ms
+  setTimeout(() => { animating = false; }, 1700);
+}
+
+setTimeout(fire, 500);
+setInterval(() => { if (!animating) fire(); }, 3000);
+</script>
+</body>
+</html>
