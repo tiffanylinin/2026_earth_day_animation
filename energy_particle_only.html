@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 393px;
+    height: 852px;
+    background: transparent;
+    overflow: hidden;
+  }
+
+  canvas {
+    position: absolute;
+    top: 0; left: 0;
+    width: 393px;
+    height: 852px;
+    background: transparent;
+  }
+
+  /* Invisible trigger zone over the donate button area */
+  #trigger-zone {
+    position: absolute;
+    left: 24px;
+    bottom: 148px;
+    width: 345px;
+    height: 56px;
+    cursor: pointer;
+    background: transparent;
+    z-index: 10;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+<div id="trigger-zone" onclick="fire(event)"></div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+canvas.width  = 393;
+canvas.height = 852;
+
+// ── Exact coordinates from Figma frame 117:11327 ──
+// Donate button centre (x: 31+330/2=196, y: 695+60/2=725)
+const START = { x: 196, y: 725 };
+// Progress thumb centre
+// progressSection padding=24, track at y≈340, thumb on fill at right 86% of (393-48)=297px → x=24+297*0.86≈279, y≈340+6=346
+const END = { x: 58, y: 388 };
+
+// Bezier control points for natural arc (left-curving, upward)
+const CP1 = { x: START.x - 100, y: START.y - 80  };
+const CP2 = { x: END.x   + 60,  y: END.y   + 120 };
+
+function bez(t, a, b, c, d) {
+  const u = 1 - t;
+  return {
+    x: u*u*u*a.x + 3*u*u*t*b.x + 3*u*t*t*c.x + t*t*t*d.x,
+    y: u*u*u*a.y + 3*u*u*t*b.y + 3*u*t*t*c.y + t*t*t*d.y,
+  };
+}
+
+function easeInOutCubic(t) {
+  return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2;
+}
+
+function drawParticle(x, y, r, alpha, glowR) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(x, y);
+
+  // Glow halo
+  if (glowR > 0) {
+    const g = ctx.createRadialGradient(0,0,0,0,0,glowR);
+    g.addColorStop(0, `rgba(93,235,176,${alpha*0.5})`);
+    g.addColorStop(1, 'rgba(93,235,176,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(0, 0, glowR, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  // Circle body — exact Figma color rgb(3,112,103)
+  ctx.beginPath();
+  ctx.arc(0, 0, r, 0, Math.PI*2);
+  ctx.fillStyle = 'rgb(3,112,103)';
+  ctx.fill();
+
+  // White border
+  ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+  ctx.lineWidth = r * 0.18;
+  ctx.stroke();
+
+  // Leaf inside
+  const s = r * 0.58;
+  ctx.beginPath();
+  ctx.moveTo(0, -s);
+  ctx.bezierCurveTo( s*.9, -s*.2,  s*.9,  s*.6,  0,  s);
+  ctx.bezierCurveTo(-s*.9,  s*.6, -s*.9, -s*.2,  0, -s);
+  ctx.fillStyle = 'rgba(255,255,255,0.95)';
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawBurst(x, y, t) {
+  const n = 8;
+  for (let i = 0; i < n; i++) {
+    const a  = (i/n) * Math.PI*2;
+    const d  = t * 30;
+    const r  = (1-t) * 4;
+    ctx.save();
+    ctx.globalAlpha = (1-t) * 0.8;
+    ctx.beginPath();
+    ctx.arc(x + Math.cos(a)*d, y + Math.sin(a)*d, r, 0, Math.PI*2);
+    ctx.fillStyle = '#9FE1CB';
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+let animating = false;
+
+function fire() {
+  if (animating) return;
+  animating = true;
+
+  const configs = [
+    { delay:   0, size: 13, dur: 920 },
+    { delay: 130, size: 11, dur: 960 },
+    { delay: 240, size: 10, dur: 900 },
+  ];
+
+  const active = [];
+  const trails = [[], [], []];
+  const bursts = [];
+  let arrived  = 0;
+
+  configs.forEach((c, i) => {
+    setTimeout(() => {
+      active.push({ i, size: c.size, dur: c.dur, t0: performance.now(), done: false });
+    }, c.delay);
+  });
+
+  function frame(ts) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    active.forEach(p => {
+      const raw = Math.min((ts - p.t0) / p.dur, 1);
+      const t   = easeInOutCubic(raw);
+      const pos = bez(t, START, CP1, CP2, END);
+
+      // Scale up then down
+      const scale = raw < 0.65 ? 1 + raw*0.35 : 1 + (1-raw)*0.35;
+      const alpha = raw < 0.82 ? 1 : (1-raw)/0.18;
+      const glow  = raw > 0.5  ? (raw-0.5)*2*36 : 0;
+
+      // Trail
+      trails[p.i].push({ x: pos.x, y: pos.y, r: p.size*0.28, a: 1-raw });
+      if (trails[p.i].length > 14) trails[p.i].shift();
+      trails[p.i].forEach((pt, j) => {
+        ctx.save();
+        ctx.globalAlpha = (j / trails[p.i].length) * 0.4 * pt.a;
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, pt.r, 0, Math.PI*2);
+        ctx.fillStyle = '#5DCAA5';
+        ctx.fill();
+        ctx.restore();
+      });
+
+      drawParticle(pos.x, pos.y, p.size * scale, alpha, glow);
+
+      if (raw >= 1 && !p.done) {
+        p.done = true;
+        bursts.push({ x: END.x, y: END.y, t0: ts });
+        arrived++;
+      }
+    });
+
+    // Burst particles
+    for (let i = bursts.length-1; i >= 0; i--) {
+      const b  = bursts[i];
+      const bt = Math.min((ts - b.t0) / 420, 1);
+      drawBurst(b.x, b.y, bt);
+      if (bt >= 1) bursts.splice(i, 1);
+    }
+
+    const allDone = active.length === 3 && active.every(p => p.done);
+    if (!allDone || bursts.length > 0) {
+      requestAnimationFrame(frame);
+    } else {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      animating = false;
+    }
+  }
+
+  setTimeout(() => requestAnimationFrame(frame), 50);
+}
+
+// Auto-fire on load for preview, then loop every 3s
+setTimeout(() => fire(), 600);
+setInterval(() => fire(), 3200);
+</script>
+</body>
+</html>
